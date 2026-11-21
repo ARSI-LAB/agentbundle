@@ -1,0 +1,4 @@
+model:
+  provider: ${AGENT_MODEL_PROVIDER}
+  model: ${AGENT_MODEL_NAME}
+plugins: {}

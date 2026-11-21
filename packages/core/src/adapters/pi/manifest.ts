@@ -129,6 +129,9 @@ export async function parsePiBundleManifest(bundleDir: string, raw: Record<strin
     const path = resolveInBundle(bundleDir, declared, `bundle.yaml extension ${JSON.stringify(declared)}`)
     extensions.push(await describeExtension(bundleDir, declared, path))
   }
+  if (raw['extensionPolicy'] !== 'run-v1') {
+    throw new BundleError('Pi bundle.yaml must declare extensionPolicy: run-v1 and apply PI_BUNDLE_RUN_POLICY before extension registration', 'MANIFEST_INVALID')
+  }
   return {
     name: raw['name'],
     kind: PI_BUNDLE_KIND,

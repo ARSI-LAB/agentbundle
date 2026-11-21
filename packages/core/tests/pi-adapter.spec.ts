@@ -1,9 +1,10 @@
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   BundleError,
+  definePiExtension,
   computeBundleDigest,
   dispatchLoad,
   dispatchUninstall,
@@ -59,6 +60,7 @@ interface PiBundleOptions {
 
 const DEFAULT_PI_BUNDLE_YAML = [
   'kind: pi-agent-bundle',
+  'extensionPolicy: run-v1',
   'schemaVersion: 1',
   'name: pi',
   'harness:',
@@ -105,6 +107,25 @@ const AGENT_WITH_MODEL = 'model:\n  provider: ai-gateway\n  model: glm-5.3-flash
 const AGENT_WITH_PLACEHOLDERS = 'model:\n  provider: ${AGENT_MODEL_PROVIDER}\n  model: ${AGENT_MODEL_NAME}\n'
 
 describe('pi manifest parsing', () => {
+  it('rejects a bundle which has not migrated its extensions', async () => {
+    const dir = await piBundle({ bundleYaml: DEFAULT_PI_BUNDLE_YAML.replace('extensionPolicy: run-v1', '') })
+    await expect(verifyBundle(dir)).rejects.toThrow('extensionPolicy: run-v1')
+  })
+
+  it('delivers a fresh policy before each extension activation', () => {
+    const activate = definePiExtension((_pi: unknown, policy) => policy)
+    try {
+      vi.stubEnv('PI_BUNDLE_RUN_POLICY', undefined)
+      expect(activate({})).toEqual({})
+      vi.stubEnv('PI_BUNDLE_RUN_POLICY', '{"tools":"none","webSearch":"enabled","mcp":"default"}')
+      expect(activate({})).toEqual({ tools: 'none', webSearch: 'disabled', webFetch: 'disabled', mcp: 'default' })
+      vi.stubEnv('PI_BUNDLE_RUN_POLICY', '{"mcp":"disabled"}')
+      expect(activate({})).toEqual({ mcp: 'disabled' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('resolves the declared native resources through kind dispatch', async () => {
     const dir = await piBundle()
     const result = await verifyBundle<'pi-agent-bundle'>(dir)

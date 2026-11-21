@@ -161,6 +161,7 @@ demo-pi/
 
 ```yaml
 kind: pi-agent-bundle
+extensionPolicy: run-v1
 schemaVersion: 1
 name: demo-pi
 harness:
@@ -173,8 +174,20 @@ extensions:
   - ./extensions/demo
 ```
 
+An extension receives the run policy at activation. Bundle authors can import `definePiExtension` from `agent-bundle-core` at build time and bundle it into the extension artifact. It adapts the native Pi entry point to `(pi, policy)`. An extension without a build step can read `JSON.parse(process.env.PI_BUNDLE_RUN_POLICY ?? "{}")` inside its activation function. Standalone Pi uses native defaults when the variable is absent. Keep connections and delegation inside their respective branches and pass the same policy to children.
+
+```ts
+export default definePiExtension((pi: ExtensionAPI, policy) => {
+  if (policy.tools !== "none") registerFileTools(pi)
+  if (policy.mcp !== "disabled") registerMcpClient(pi)
+  if (policy.tools !== "none" && policy.subagent !== "disabled") registerChildAgent(pi, policy)
+  if (policy.skills !== "disabled") registerSkills(pi)
+})
+```
+
 | Field | Rule |
 | --- | --- |
+| `extensionPolicy` | Required. Use `run-v1` after moving capability-dependent work into extension activation. |
 | `instructions` | Required: path to an existing instruction file. |
 | `skills` | Required: skill file or directory. Every discovered `SKILL.md` needs YAML frontmatter with a non-empty `description`. |
 | `settings` | Required: JSON object file. `defaultProvider` and `defaultModel`, if present, must be strings. |
@@ -311,12 +324,12 @@ plugins:
 | `plugins` | Required: non-empty list of `{path}` objects. Each target must exist inside the bundle. |
 | `lockfile` | Optional existing path; root `dependencies.lock` is still required. |
 
-`langgraph.json` must contain `graphs.agent` with a `<module>:<attribute>` reference. The module path is relative to the JSON file directory and must exist within that directory boundary. Keep the JSON at the bundle root for this layout:
+`langgraph.json` must contain `graphs.agent` with a `<module>:build_agent_for_run` reference. The module path is relative to the JSON file directory and must exist within that directory boundary. Keep the JSON at the bundle root for this layout:
 
 ```json
 {
   "graphs": {
-    "agent": "./agent.py:agent"
+    "agent": "./agent.py:build_agent_for_run"
   },
   "dependencies": [
     "."
@@ -324,7 +337,9 @@ plugins:
 }
 ```
 
-`agent.py` must expose a real graph as `agent`. The static parser checks the module file, not whether the attribute is a runnable graph. Implement graph composition and runtime model binding there. The installer installs the bundle root with `pip install -e` (or uv equivalent), so provide valid Python packaging; for example:
+Export `build_agent_for_run(*, policy, mcp_servers, skills_directories, tools, middleware)`. Select tools, load skills, connect MCP servers, and build the main graph and its children inside this function. Keep module import free of these operations. A synchronous or asynchronous factory may return a graph supporting `invoke` or `ainvoke`. Missing policy fields preserve the bundle’s native behavior. With `tools: none`, omit built-in tools and supplementary search. Explicit MCP servers still follow the independent `mcp` setting. Attach the caller’s tracing middleware and pass the supplementary `tools` to the main graph and its children. See the [runnable example](../examples/deepagents/agent.py).
+
+Supply Python packaging metadata for the editable install of the bundle root.
 
 ```toml
 [build-system]

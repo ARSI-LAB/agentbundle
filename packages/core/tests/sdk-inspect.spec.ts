@@ -66,6 +66,7 @@ async function piBundle(): Promise<string> {
   await writeFiles(dir, {
     'bundle.yaml': [
       'kind: pi-agent-bundle',
+      'extensionPolicy: run-v1',
       'schemaVersion: 1',
       'name: pi',
       'harness:',
