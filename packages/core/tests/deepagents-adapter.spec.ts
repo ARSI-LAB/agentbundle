@@ -65,8 +65,8 @@ async function validBundle(): Promise<string> {
   return await makeBundle({
     'bundle.yaml': BUNDLE_YAML,
     'agent.yaml': 'model:\n  provider: ${AGENT_MODEL_PROVIDER}\n  model: ${AGENT_MODEL_NAME}\nplugins: {}\n',
-    'langgraph.json': JSON.stringify({ graphs: { agent: './agent.py:agent' }, dependencies: ['.'] }),
-    'agent.py': 'agent = None\n',
+    'langgraph.json': JSON.stringify({ graphs: { agent: './agent.py:build_agent_for_run' }, dependencies: ['.'] }),
+    'agent.py': 'def build_agent_for_run(**kwargs): pass\n',
     'dependencies.lock': '# placeholder\n',
     'plugins/office_base/__init__.py': '',
     'plugins/sop/README.md': 'sop product\n',
@@ -94,8 +94,8 @@ describe('parseDeepagentsBundleManifest (via verifyBundle)', () => {
 
   it('rejects manifest defects with precise causes', async () => {
     const base: Record<string, string> = {
-      'langgraph.json': JSON.stringify({ graphs: { agent: './agent.py:agent' } }),
-      'agent.py': 'agent = None\n',
+      'langgraph.json': JSON.stringify({ graphs: { agent: './agent.py:build_agent_for_run' } }),
+      'agent.py': 'def build_agent_for_run(**kwargs): pass\n',
       'dependencies.lock': '# placeholder\n',
       'plugins/office_base/__init__.py': '',
       'plugins/sop/README.md': 'sop\n',
@@ -126,8 +126,12 @@ describe('parseDeepagentsBundleManifest (via verifyBundle)', () => {
     await expect(verifyBundle(noGraphs)).rejects.toThrow('must contain a "graphs" mapping')
 
     const noAgent = await validBundle()
-    await writeFile(join(noAgent, 'langgraph.json'), JSON.stringify({ graphs: { other: './agent.py:agent' } }))
+    await writeFile(join(noAgent, 'langgraph.json'), JSON.stringify({ graphs: { other: './agent.py:build_agent_for_run' } }))
     await expect(verifyBundle(noAgent)).rejects.toThrow('graphs must declare "agent"')
+
+    const old = await validBundle()
+    await writeFile(join(old, 'langgraph.json'), JSON.stringify({ graphs: { agent: './agent.py:agent' } }))
+    await expect(verifyBundle(old)).rejects.toThrow('build_agent_for_run')
 
     const missingModule = await validBundle()
     await rm(join(missingModule, 'agent.py'))
@@ -135,7 +139,7 @@ describe('parseDeepagentsBundleManifest (via verifyBundle)', () => {
 
     const malformedRef = await validBundle()
     await writeFile(join(malformedRef, 'langgraph.json'), JSON.stringify({ graphs: { agent: 'agent.py' } }))
-    await expect(verifyBundle(malformedRef)).rejects.toThrow('"<module>:<attr>"')
+    await expect(verifyBundle(malformedRef)).rejects.toThrow('must reference <module>:build_agent_for_run')
   })
 
   it('requires the lockfile pointer to exist', async () => {
@@ -184,7 +188,7 @@ describe('installDeepagentsBundle', () => {
     })
     expect(result.reused).toBe(false)
     expect(result.profile).toBe('probe-dg')
-    expect(result.launchCommand).toBe(`cd ${dir} && ${join(home, 'bin', 'python')} -c "import agent"`)
+    expect(result.launchCommand).toBe(`'${join(home, 'bin', 'python')}' '${join(home, 'check-factory.py')}'`)
     expect(calls).toEqual([
       { command: pyBin, args: ['-c', expect.stringContaining('sys.version_info')] },
       { command: pyBin, args: ['-m', 'venv', home] },

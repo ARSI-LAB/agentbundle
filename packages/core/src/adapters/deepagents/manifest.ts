@@ -102,7 +102,7 @@ export async function parseDeepagentsBundleManifest(bundleDir: string, raw: Reco
 
 /**
  * Parse the bundle's langgraph.json and resolve the composition graph.
- * `graphs[agent]` is mandatory: "./agent.py:agent" style — the module file
+ * `graphs[agent]` is mandatory: "<module>:build_agent_for_run" — the module file
  * part must exist inside the bundle.
  */
 async function parseLanggraphJson(entryPath: string): Promise<{ graphId: string; graphModule: string }> {
@@ -116,8 +116,8 @@ async function parseLanggraphJson(entryPath: string): Promise<{ graphId: string;
     throw new BundleError(`entry langgraph.json graphs must declare ${JSON.stringify(DEEPAGENTS_GRAPH_ID)}, got ${JSON.stringify(graphs)}`, 'MANIFEST_INVALID')
   }
   const separator = declared.lastIndexOf(':')
-  if (separator <= 0) {
-    throw new BundleError(`entry langgraph.json graphs[${JSON.stringify(DEEPAGENTS_GRAPH_ID)}] must be "<module>:<attr>", got ${JSON.stringify(declared)}`, 'MANIFEST_INVALID')
+  if (separator <= 0 || declared.slice(separator + 1) !== 'build_agent_for_run') {
+    throw new BundleError('langgraph.json graphs.agent must reference <module>:build_agent_for_run', 'MANIFEST_INVALID')
   }
   const graphModule = declared.slice(0, separator)
   const modulePath = resolveInBundle(entryPath === '' ? '.' : join(entryPath, '..'), graphModule, 'entry langgraph.json graphs[agent] module')

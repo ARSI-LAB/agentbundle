@@ -1,5 +1,5 @@
-import { access, constants, mkdir, readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { access, constants, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve } from 'node:path'
 import { DEEPAGENTS_BUNDLE_KIND } from './manifest.ts'
 import { harnessNameForKind } from '../../manifest.ts'
 import { detectUv, resolvePythonRuntime } from './runtime.ts'
@@ -13,13 +13,18 @@ import type { HarnessAdapter, InstallOptions, InstallResult, RunPython } from '.
 /** The deepagents pin (`pyproject.toml` requires-python) — enforced before venv creation. */
 const PY_VERSION_CHECK = 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'
 
+function factoryCheckCommand(home: string): string {
+  const quote = (path: string) => "'" + path.replaceAll("'", "'\\''") + "'"
+  return [join(home, 'bin', 'python'), join(home, 'check-factory.py')].map(quote).join(' ')
+}
+
 export const deepagentsAdapter: HarnessAdapter = {
   kind: DEEPAGENTS_BUNDLE_KIND,
   install: installDeepagentsBundle,
   uninstall: uninstallInstallation,
   runtimeCheck: ({ record, log }) => checkStampActivation(record, join(record.home, '.bundle-install.json'), log),
   describeLaunch: ({ record }) => ({
-    launchCommand: `cd ${record.bundleDir} && ${join(record.home, 'bin', 'python')} -c "import agent"`,
+    launchCommand: factoryCheckCommand(record.home),
     launchEnv: {},
   }),
 }
@@ -57,7 +62,7 @@ export async function installDeepagentsBundle(options: InstallOptions): Promise<
     if (shouldReuseInstall(await readInstallStamp(recordPath), verified.digest, options.force)) {
       options.log?.(`reusing installation: venv ${home}`)
       await upsertRecord(registryPath, registryRecord)
-      return assemble(verified, bundleDir, home, manifest.declaredPlugins, true, registryRecord.id)
+      return assemble(verified, home, manifest.declaredPlugins, true, registryRecord.id)
     }
 
     const env = options.env ?? process.env
@@ -87,22 +92,35 @@ export async function installDeepagentsBundle(options: InstallOptions): Promise<
       await runPython(venvPython, ['-m', 'pip', 'install', '-e', bundleDir], {})
     }
 
-    // No model write: agent.py resolves the agent.yaml `${ENV}` placeholders at
-    // import time (runtime binding); unset variables fall back to the deepagents
-    // default model. Credentials stay with the caller.
-
+    const modulePath = resolve(dirname(manifest.entryPath), manifest.graphModule)
     await mkdir(home, { recursive: true })
+    await writeFile(join(home, 'check-factory.py'), [
+      'import importlib.util, sys',
+      'from pathlib import Path',
+      `path = Path(${JSON.stringify(modulePath)})`,
+      `root = Path(${JSON.stringify(bundleDir)})`,
+      'sys.path.insert(0, str(root))',
+      'name = ".".join(path.relative_to(root).with_suffix("").parts)',
+      'spec = importlib.util.spec_from_file_location(name, path)',
+      'if spec is None or spec.loader is None:',
+      '    raise ImportError(f"cannot import factory from {path}")',
+      'module = importlib.util.module_from_spec(spec)',
+      'sys.modules[name] = module',
+      'spec.loader.exec_module(module)',
+      'if not callable(getattr(module, "build_agent_for_run", None)):',
+      '    raise TypeError(f"{path} does not export a callable build_agent_for_run")',
+      '',
+    ].join('\n'))
     await writeInstallStamp(recordPath, verified.digest, bundleDir)
     await upsertRecord(registryPath, registryRecord)
     options.log?.(`installed bundle ${manifest.name} into ${home}`)
-    return assemble(verified, bundleDir, home, manifest.declaredPlugins, false, registryRecord.id)
+    return assemble(verified, home, manifest.declaredPlugins, false, registryRecord.id)
   })
 }
 
-/** Launch = the composition-entry smoke import: installed ⟺ the graph imports. */
+/** The launch probe imports the declared module and checks its factory without a model call. */
 function assemble(
   verified: { digest: string; manifest: { name: string; harnessVersion: string } },
-  bundleDir: string,
   home: string,
   plugins: readonly string[],
   reused: boolean,
@@ -117,7 +135,7 @@ function assemble(
     profile: verified.manifest.name,
     plugins,
     reused,
-    launchCommand: `cd ${bundleDir} && ${join(home, 'bin', 'python')} -c "import agent"`,
+    launchCommand: factoryCheckCommand(home),
   }
 }
 

@@ -22,7 +22,7 @@ Agent Bundle 将一个 Agent 的指令、配置、Skills、插件和运行入口
 | --- | --- | --- | --- |
 | DSH | `dsh-agent-bundle` | 安装原生插件和 profile 配置。 | [格式说明](./docs/bundle-formats.zh-CN.md#dsh) |
 | Dify | `dify-agent-bundle` | 通过 Console API 导入工作流 DSL；需要运行中的 Dify 服务和 Console 凭据。 | [格式说明](./docs/bundle-formats.zh-CN.md#dify) |
-| Pi | `pi-agent-bundle` | 映射指令、Skills、扩展和配置；使用 `harness.name: pi`。 | [格式说明](./docs/bundle-formats.zh-CN.md#pi) |
+| Pi | `pi-agent-bundle` | 声明 `extensionPolicy: run-v1`，扩展激活时读取本次策略。映射指令、Skills、扩展和配置；使用 `harness.name: pi`。 | [格式说明](./docs/bundle-formats.zh-CN.md#pi) |
 | Hermes | `hermes-agent-bundle` | 复制并启用目录插件，写入模型选择。 | [格式说明](./docs/bundle-formats.zh-CN.md#hermes) |
 | deepagents | `deepagents-agent-bundle` | 创建隔离 Python 环境，以 editable 模式安装 Bundle 包；需要 uv 或 Python ≥ 3.11。 | [格式说明](./docs/bundle-formats.zh-CN.md#deepagents) |
 | jiuwenswarm | `jiuwenswarm-agent-bundle` | 在隔离数据根目录中物化 templates、skills、packages 和配置。 | [格式说明](./docs/bundle-formats.zh-CN.md#jiuwenswarm) |

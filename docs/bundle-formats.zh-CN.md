@@ -161,6 +161,7 @@ demo-pi/
 
 ```yaml
 kind: pi-agent-bundle
+extensionPolicy: run-v1
 schemaVersion: 1
 name: demo-pi
 harness:
@@ -173,8 +174,20 @@ extensions:
   - ./extensions/demo
 ```
 
+扩展在激活时接收本次策略。在构建扩展时，可以从 `agent-bundle-core` 导入 `definePiExtension` 并将它打入扩展产物。该函数把原生 Pi 的单参数入口包装为 `(pi, policy)`。无构建步骤的扩展也可以直接在激活函数内读取 `JSON.parse(process.env.PI_BUNDLE_RUN_POLICY ?? "{}")`。独立 Pi 未设置该变量时启用原生默认行为。将连接和委派移入相应分支，子 Agent 继承本次策略。
+
+```ts
+export default definePiExtension((pi: ExtensionAPI, policy) => {
+  if (policy.tools !== "none") registerFileTools(pi)
+  if (policy.mcp !== "disabled") registerMcpClient(pi)
+  if (policy.tools !== "none" && policy.subagent !== "disabled") registerChildAgent(pi, policy)
+  if (policy.skills !== "disabled") registerSkills(pi)
+})
+```
+
 | 字段 | 规则 |
 | --- | --- |
+| `extensionPolicy` | 必填。将受开关控制的操作移入扩展激活函数后填写 `run-v1`。 |
 | `instructions` | 必填：指向现有指令文件。 |
 | `skills` | 必填：Skill 文件或目录。发现的每个 `SKILL.md` 都需 YAML frontmatter 和非空 `description`。 |
 | `settings` | 必填：JSON 对象文件；若提供 `defaultProvider`、`defaultModel`，必须为字符串。 |
@@ -311,12 +324,12 @@ plugins:
 | `plugins` | 必填：非空 `{path}` 对象列表，目标必须存在于 Bundle 内。 |
 | `lockfile` | 可选现有路径；根目录仍需 `dependencies.lock`。 |
 
-`langgraph.json` 必须包含 `graphs.agent`，值为 `<module>:<attribute>`。模块路径相对该 JSON 的目录，必须存在且不能越出该目录边界。按此布局将 JSON 放在 Bundle 根目录：
+`langgraph.json` 必须包含 `graphs.agent`，值为 `<module>:build_agent_for_run`。模块路径相对该 JSON 的目录，必须存在且不能越出该目录边界。按此布局将 JSON 放在 Bundle 根目录：
 
 ```json
 {
   "graphs": {
-    "agent": "./agent.py:agent"
+    "agent": "./agent.py:build_agent_for_run"
   },
   "dependencies": [
     "."
@@ -324,7 +337,9 @@ plugins:
 }
 ```
 
-`agent.py` 应导出名为 `agent` 的真实图对象。静态解析检查模块文件，不验证属性是否为可运行图。图组合和运行时模型绑定需在此实现。安装器通过 `pip install -e`（或 uv 等价命令）安装 Bundle 根目录，因此需提供有效 Python 包配置，例如：
+模块导出 `build_agent_for_run(*, policy, mcp_servers, skills_directories, tools, middleware)`。在函数中读取本次运行的配置，选择工具、加载技能、连接 MCP，再创建主图和子图。模块导入时不要执行这些操作。函数可以是同步或异步函数，返回支持 `invoke` 或 `ainvoke` 的图。`policy` 缺省字段保留 Bundle 的原生行为。`tools: none` 关闭内置工具和补充搜索，自行声明的 MCP 仍由 `mcp` 控制。`middleware` 携带轨迹记录器，`tools` 携带本次允许的附加工具，主图和子图都可注册。参见[可运行示例](../examples/deepagents/agent.py)。
+
+安装器对 Bundle 根目录执行 editable 安装，需要提供 Python 包配置。
 
 ```toml
 [build-system]

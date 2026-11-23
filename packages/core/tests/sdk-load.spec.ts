@@ -133,7 +133,7 @@ describe('describeLaunch per kind', () => {
     expect(getAdapter('deepagents-agent-bundle')?.describeLaunch({
       record: { ...base, id: 'probe-aaaaaaaa', kind: 'deepagents-agent-bundle', home, profile: 'probe', installedAt: '', mode: 'ephemeral', status: 'installed' },
       bindings: {},
-    })).toEqual({ launchCommand: `cd /tmp/src && ${join(home, 'bin', 'python')} -c "import agent"`, launchEnv: {} })
+    })).toEqual({ launchCommand: `'${join(home, 'bin', 'python')}' '${join(home, 'check-factory.py')}'`, launchEnv: {} })
 
     expect(getAdapter('dify-agent-bundle')?.describeLaunch({
       record: { ...base, id: 'probe-aaaaaaaa', kind: 'dify-agent-bundle', home: 'dify-app:1', profile: 'probe', installedAt: '', mode: 'ephemeral', status: 'installed', appId: '1', apiKey: 'sk-x', baseUrl: 'http://dify' },

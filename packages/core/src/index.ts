@@ -127,3 +127,4 @@ export type {
   RunHermes,
   RunPython,
 } from './adapters/types.ts'
+export { definePiExtension, type PiRunPolicy } from './adapters/pi/run-policy.ts'

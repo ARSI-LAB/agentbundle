@@ -88,7 +88,7 @@ describe.skipIf(!existsSync(bundleDir))('agent-bundle deepagents e2e (real venv 
     expect(parsed.digest).toBe(digest)
     expect(parsed.home).toBe(home)
     expect(parsed.profile).toBe('office-agent')
-    expect(parsed.launch).toBe(`cd ${bundleDir} && ${join(home, 'bin', 'python')} -c "import agent"`)
+    expect(parsed.launch).toBe(`'${join(home, 'bin', 'python')}' '${join(home, 'check-factory.py')}'`)
     installedId = `office-agent-${digest.slice(7, 15)}`
     expect(existsSync(join(home, 'bin', 'python'))).toBe(true)
 
@@ -100,13 +100,13 @@ describe.skipIf(!existsSync(bundleDir))('agent-bundle deepagents e2e (real venv 
   it('imports the composed agent (assembly assertions)', async () => {
     const check = [
       'import agent',
-      'assert "Office task discipline:" in agent.SYSTEM_PROMPT, "discipline missing"',
-      'assert "SOP: synthesized-process" in agent.SYSTEM_PROMPT, "runbook missing"',
-      'assert agent.INTERRUPT_ON, "interrupt gates missing"',
-      'assert agent.agent is not None, "graph missing"',
+      'import asyncio, inspect',
+      'graph = agent.build_agent_for_run(policy={}, mcp_servers=[], skills_directories=[], tools=(), middleware=())',
+      'graph = asyncio.run(graph) if inspect.isawaitable(graph) else graph',
+      'assert callable(getattr(graph, "invoke", None)) or callable(getattr(graph, "ainvoke", None))',
       'print("assembly OK")',
     ].join('; ')
-    const run = await runProcess(join(home, 'bin', 'python'), ['-c', check], process.env, bundleDir)
+    const run = await runProcess(join(home, 'bin', 'python'), ['-c', check], { ...process.env, AGENT_MODEL_PROVIDER: 'fake' }, bundleDir)
     expect(run.code, run.stderr).toBe(0)
     expect(run.stdout).toContain('assembly OK')
   })
